@@ -55,6 +55,18 @@ Use the first arg after eval to select the config to run from the **./configs/**
 python -m src.eval default
 ```
 
+## Adaptive phoneme selection
+
+The optional adaptive PDSM rule selects scores strictly above the within-segment
+mean plus `adaptive_lambda` times the population standard deviation. The
+top-percent baseline shares the inclusive-end-frame and zero-count fixes.
+The default configuration still uses top 10%.
+
+See [the implementation and experiment guide](docs/CAI_TIEN_DA_TRIEN_KHAI.md)
+for the CPU Docker commands, score CSV schema, six-rule comparison, tests,
+and independent dev/test labelling requirements. Unlabelled audio does not
+provide evidence of improved Precision/Recall/F1.
+
 ## Building Docker Images
 
 Once downloading docker on your system and initiating the conda environment, run the following within that environment.
@@ -94,3 +106,4 @@ BibTeX:
 **Lead Developer**: Ben Heritage (University of York)
 
 This work was supported by EPSRC (Engineering and Physical Sciences Research Council) Impact Accelerator award EP/X525856/1 and by CoSTAR (Convergent Screen Technologies and Performance in Realtime) Live Lab, funded by the Arts and Humanities Research Council, grant reference AH/Y001079/1
+# synth-speech-eval-upgrade
