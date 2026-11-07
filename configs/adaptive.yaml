@@ -1,0 +1,23 @@
+# Current workspace input. Does not use the stale ../thuc-nghiem paths.
+path: ./
+dataset_name: inputs
+output_dir: ./outputs/adaptive/
+language: en
+score_threshold: 3
+sq_ast_dims: [mos]
+saliency:
+  saliency_method: GradCAM
+sq_ast:
+  batch_size: 1
+whisperx:
+  batch_size: 1
+pdsm:
+  k_method: adaptive
+  adaptive_lambda: 1.0
+  k: 0.1
+  preprocess: abs
+  pool: l2_norm
+kde:
+  output_raw_kde: false
+plots:
+  output_sys_corr: false

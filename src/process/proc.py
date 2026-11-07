@@ -15,11 +15,13 @@ logger.addHandler(stdout_handler)
 
 from ..models import sq_ast_mod, ppgs_wrapper
 from . import pdsm
+from .phoneme_export import PHONEME_SCORE_FIELDS, build_export_rows
 from ..util import kde_tools, config_util, audio_segmentation, plot_helper_ind, plot_helper_sys
 
 import threading
 import torch
 import os
+import csv
 import yaml
 import numpy as np
 from datetime import datetime
@@ -44,6 +46,9 @@ def run_eval(config_file):
     return_code : 0 if no errors, error message if one raised
     '''
     return_code = 0
+    output_dir = None
+    file_handler = None
+    phoneme_score_file = None
     try:
         start_time = config_file["datetime"]
 
@@ -92,14 +97,19 @@ def run_eval(config_file):
         input_df = audio_segmentation.get_input_dataset(config_file)
 
         if len(input_df) == 0:
-            logger.info("Input Dataset has no valid audio files")
-            exit()
+            raise ValueError("Input Dataset has no valid audio files")
 
         # Validate dims
         config_file["sq_ast_dims"] = sq_ast_mod.sq_ast_validate_dims(config_file["sq_ast_dims"])
+        pdsm.get_preprocess_and_pool(config_file)
+        pdsm.select_indices([], config_file["pdsm"]["k_method"],
+                            config_file["pdsm"]["k"],
+                            config_file["pdsm"].get("adaptive_lambda", 1.0))
 
         # unpack sq_ast outputs
         sq_ast_ds, sq_ast_pred, saliency_maps, fbank_lengths, output_ind_df = sq_ast_mod.sq_ast_fw(config_file, input_df)
+        # Preserve quality scores even if a later alignment/plotting step fails.
+        output_ind_df.to_csv(output_ind_tsv_path, index=False, sep="\t")
 
         # plot system violin plots
         if config_file["plots"]["output_sys_violin"]:
@@ -199,6 +209,11 @@ def run_eval(config_file):
             # get kernel density estimate for both time and frequency domain
             kde_x_info = np.zeros(shape=(len(output_ind_df_thresh), len(config_file["sq_ast_dims"]), int(sq_ast_mod.SALIENCY_INTERP_SIZE[1])), dtype=np.float32)
             kde_y_info = np.zeros(shape=(len(output_ind_df_thresh), len(config_file["sq_ast_dims"]), sq_ast_mod.SQ_MEL_FREQ), dtype=np.float32)
+            phoneme_score_file = open(os.path.join(output_dir, "phoneme_scores.csv"),
+                                      "w", newline="", encoding="utf-8")
+            phoneme_writer = csv.DictWriter(phoneme_score_file, fieldnames=PHONEME_SCORE_FIELDS)
+            phoneme_writer.writeheader()
+            phoneme_rows_written = 0
 
             # gather information on each thresholded audio file
             for file_idx, df_row in output_ind_df_thresh.iterrows():
@@ -231,15 +246,23 @@ def run_eval(config_file):
                         pdsm_preprocess, pdsm_pool = pdsm.get_preprocess_and_pool(config_file)
 
                         # run the pdsm algorithm
-                        dim_pdsm, dim_phon = pdsm.PDSM(
+                        dim_pdsm, dim_phon, all_phoneme_scores = pdsm.PDSM(
                             saliency_rescaled, 
                             ppgs_pred_file,
                             ppgs_dict,
                             pdsm_preprocess, 
                             pdsm_pool, 
                             config_file["pdsm"]["k_method"],
-                            config_file["pdsm"]["k"]
+                            config_file["pdsm"]["k"],
+                            adaptive_lambda=config_file["pdsm"].get("adaptive_lambda", 1.0),
+                            return_scores=True,
                         )
+                        export_rows = build_export_rows(
+                            df_row, dim, all_phoneme_scores, config_file,
+                            frame_hop=sq_ast_mod.SQ_HOP_SIZE)
+                        phoneme_writer.writerows(export_rows)
+                        phoneme_score_file.flush()
+                        phoneme_rows_written += len(export_rows)
 
                         # save the important phoneme information
                         pdsm_info[f"pdsm_sq_{dim}"].append(dim_phon) # store the phoneme information
@@ -283,6 +306,9 @@ def run_eval(config_file):
                         # store dummy phoneme information to save lengths
                         pdsm_info[f"pdsm_sq_{dim}"].append(["n/a"]) 
                         kde_info[f"kde_flatness_sq_{dim}"].append("n/a")
+                        if config_file["kde"]["output_raw_kde"]:
+                            kde_info[f"kde_x_sq_{dim}"].append("n/a")
+                            kde_info[f"kde_y_sq_{dim}"].append("n/a")
                 
                 # save kde over time
                 if (config_file["plots"]["output_time_kde"]):
@@ -307,6 +333,7 @@ def run_eval(config_file):
                 )
 
             output_ind_df_thresh["transcription"] = word_alignments
+            logger.info(f"Exported {phoneme_rows_written} phoneme scores to phoneme_scores.csv")
 
             logger.info(f"PDSM/KDE processing completed in time: {datetime.now() - pdsm_start_time}")
 
@@ -314,7 +341,10 @@ def run_eval(config_file):
 
                 # Save most important phonemes
                 output_ind_df_thresh[f"pdsm_sq_{dim}"] = pdsm_info[f"pdsm_sq_{dim}"]
-                output_ind_df_thresh[f"pdsm_sq_{dim}_num"] = len(pdsm_info[f"pdsm_sq_{dim}"])
+                output_ind_df_thresh[f"pdsm_sq_{dim}_num"] = [
+                    len(items) if items != ["n/a"] else None
+                    for items in pdsm_info[f"pdsm_sq_{dim}"]
+                ]
 
                 if config_file["kde"]["output_raw_kde"]:
                     output_ind_df_thresh[f"kde_x_sq_{dim}"] = kde_info[f"kde_x_sq_{dim}"]
@@ -347,15 +377,22 @@ def run_eval(config_file):
         logger.info(f"Completed analysis in {str((datetime.now() - start_time))}")
 
     except Exception as e:
-        logger.error(f"Error: {str(e)}")
+        logger.exception(f"Error: {str(e)}")
         return_code = e
-
-    with open(f'{output_dir}/config_used.yaml', 'w') as outfile:
-        yaml.dump(config_file, outfile)
-
-    # remove loggers
-    logger.removeHandler(file_handler)
-
+    finally:
+        if phoneme_score_file is not None:
+            phoneme_score_file.close()
+        if output_dir and os.path.isdir(output_dir):
+            try:
+                with open(f'{output_dir}/config_used.yaml', 'w') as outfile:
+                    yaml.dump(config_file, outfile)
+            except Exception as error:
+                logger.exception("Error saving effective config")
+                if return_code == 0:
+                    return_code = error
+        if file_handler is not None:
+            logger.removeHandler(file_handler)
+            file_handler.close()
     return return_code
 
 
@@ -378,5 +415,8 @@ def run_evaluation():
 
     config_file["datetime"] = datetime.now()
 
-    run_eval(config_file)
+    result = run_eval(config_file)
+    if result != 0:
+        raise SystemExit(1)
+    return 0
 

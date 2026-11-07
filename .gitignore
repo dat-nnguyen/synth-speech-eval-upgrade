@@ -1,4 +1,5 @@
 # Byte-compiled / optimized / DLL files
+.DS_Store
 __pycache__/
 *.py[codz]
 *$py.class
@@ -229,3 +230,9 @@ plan.png
 /debug_entry.py
 /*.ipynb
 /configs/*.yaml
+!/configs/experiment_scores.yaml
+!/configs/experiment_explain_template.yaml
+!/configs/input_sample_scores.yaml
+!/configs/adaptive.yaml
+!/configs/baseline.yaml
+/src/models/weights/

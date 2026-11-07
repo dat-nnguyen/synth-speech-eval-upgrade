@@ -1,0 +1,27 @@
+# Run from repository root: python -m src.eval input_sample_scores
+# Reads WAV files directly inside ./inputs/, including input_sample.wav.
+# Directory mode avoids the existing single-file path issue.
+path: ./
+dataset_name: inputs
+output_dir: ./outputs/scores/
+# Not used by the score-only branch; audio language has not been verified.
+language: en
+score_threshold: 0
+sq_ast_dims: [mos, noi, dis, col, loud]
+saliency:
+  saliency_method: GradCAM
+sq_ast:
+  batch_size: 1
+plots:
+  output_pdsm_saliency_overlay: false
+  output_joint_kde: false
+  output_time_kde: false
+  output_asr_confidence: false
+  output_sys_violin: false
+  output_sys_bar: false
+  output_sys_corr: false
+  output_sys_wav_chan: false
+  output_freq_kde: false
+  output_phoneme_hist: false
+  output_double_phoneme_hist: false
+  output_asr_confidence_violin: false

@@ -1,0 +1,24 @@
+# TEMPLATE: repair and validate the explanation issues documented in
+# docs/HUONG_DAN_THUC_NGHIEM.md before interpreting these results.
+# Run: python -m src.eval experiment_explain_template
+path: ./inputs/
+dataset_name: demo_en
+output_dir: ./outputs/explain/
+language: en
+score_threshold: 3
+sq_ast_dims: [mos, noi, dis, col, loud]
+saliency:
+  saliency_method: GradCAM
+sq_ast:
+  batch_size: 1
+whisperx:
+  batch_size: 1
+pdsm:
+  k_method: threshold
+  k: 3
+  preprocess: abs
+  pool: l2_norm
+kde:
+  output_raw_kde: false
+plots:
+  output_sys_corr: false

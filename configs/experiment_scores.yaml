@@ -1,0 +1,26 @@
+# Run from the repository root: python -m src.eval experiment_scores
+# Scores are in [1, 5]. Threshold 0 deliberately skips WhisperX/PDSM/KDE.
+# Imports still require the packages in requirements.txt.
+path: ./inputs/
+dataset_name: demo_en
+output_dir: ./outputs/scores/
+language: en
+score_threshold: 0
+sq_ast_dims: [mos, noi, dis, col, loud]
+saliency:
+  saliency_method: GradCAM
+sq_ast:
+  batch_size: 1
+plots:
+  output_pdsm_saliency_overlay: false
+  output_joint_kde: false
+  output_time_kde: false
+  output_asr_confidence: false
+  output_sys_violin: false
+  output_sys_bar: false
+  output_sys_corr: false
+  output_sys_wav_chan: false
+  output_freq_kde: false
+  output_phoneme_hist: false
+  output_double_phoneme_hist: false
+  output_asr_confidence_violin: false

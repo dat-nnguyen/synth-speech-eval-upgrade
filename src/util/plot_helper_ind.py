@@ -131,6 +131,13 @@ def plot_saliency_with_pdsm(
             f"File: {str_file_path}, {str_wav_segment}{sq_ast_dim_str[dim]}: {np.round(sq_ast_pred_i, 1):.1f}\n(With the {100*config_file["pdsm"]["k"]:.0f}% Most Important Phonemes Highlighted)", 
             fontsize=TITLE_FONT_SIZE
         )
+    elif config_file["pdsm"]["k_method"] == "adaptive":
+        scale = config_file["pdsm"].get("adaptive_lambda", 1.0)
+        plt.suptitle(
+            f"File: {str_file_path}, {str_wav_segment}{sq_ast_dim_str[dim]}: {sq_ast_pred_i:.1f}\n"
+            f"Adaptive PDSM: score > mean + {scale:g} * std; {len(dim_phon)} phonemes selected",
+            fontsize=TITLE_FONT_SIZE,
+        )
 
     plt.tight_layout(pad=SUPTITLE_PAD)
     plt.savefig(os.path.join(output_dir, f"{file_segment}_{dim}_Phoneme.png"), dpi=DPI_AMOUNT, bbox_inches='tight')
@@ -234,7 +241,7 @@ def plot_saliency_jointgrid(
     title = ""
     if config_file["pdsm"]["k_method"] == "threshold":
         title = f"File: {str_file_path}, {str_wav_segment}{sq_ast_dim_str[dim]}: {np.round(sq_ast_pred_i, 1):.1f}\nwith KDE for Time/Freq"
-    elif config_file["pdsm"]["k_method"] == "percent":
+    elif config_file["pdsm"]["k_method"] in {"percent", "adaptive"}:
         title = f"File: {str_file_path} {str_wav_segment}{sq_ast_dim_str[dim]}: {np.round(sq_ast_pred_i, 1):.1f}\nwith KDE for Time/Freq"
     
     g.fig.suptitle(

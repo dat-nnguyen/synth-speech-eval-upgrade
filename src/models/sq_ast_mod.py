@@ -53,18 +53,30 @@ SQ_MEL_FREQ = SALIENCY_INTERP_SIZE[0]
 DB_MEAN = -10.25446422 # calculated from the validation datasets from July 2025
 DB_STD = 4.205750774 # calculated from the validation datasets from July 2025
 
+
+def _load_cached_pretrained(model_class, model_name, **kwargs):
+    """Read cached metadata first; contact the Hub only for a missing cache."""
+    try:
+        return model_class.from_pretrained(model_name, local_files_only=True, **kwargs)
+    except OSError:
+        return model_class.from_pretrained(model_name, **kwargs)
+
+
 class ASTXL(torch.nn.Module):
-    """Model-XL with individual AST for each dimension."""
+    """AST architecture; load a full SQ-AST checkpoint before inference."""
 
     PRETRAINED_MODEL = "MIT/ast-finetuned-audioset-10-10-0.4593"
 
     def __init__(self, pretrained_model: str = PRETRAINED_MODEL) -> None:
         super(ASTXL, self).__init__()
         try:
-            config = ASTConfig.from_pretrained(pretrained_model, output_attentions=True)
-            self.ast = ASTModel.from_pretrained(pretrained_model, config=config)
+            config = _load_cached_pretrained(ASTConfig, pretrained_model, output_attentions=True)
+            # Each SQ-AST checkpoint contains the complete AST state and is
+            # loaded strictly below. Downloading the AudioSet weights first
+            # would fetch another backbone that is immediately overwritten.
+            self.ast = ASTModel(config)
         except Exception as e:
-            raise RuntimeError(f"Failed to load pretrained model from {pretrained_model}") from e
+            raise RuntimeError(f"Failed to initialize AST from {pretrained_model}") from e
 
         self.fc = torch.nn.Sequential(
             torch.nn.Linear(768, 1),
@@ -90,7 +102,7 @@ class ASTVal(Dataset):
     def __init__(self, df, data_dir, db_mean, db_std):
         self.df = df
         self.data_dir = data_dir
-        self.feature_extractor = ASTFeatureExtractor.from_pretrained("MIT/ast-finetuned-audioset-10-10-0.4593")
+        self.feature_extractor = _load_cached_pretrained(ASTFeatureExtractor, ASTXL.PRETRAINED_MODEL)
         self.feature_extractor.sampling_rate = 48000  # Set to 48 kHz for our 48k audio
         self.feature_extractor.max_length = 1024      # Truncate inputs after 1024 patches
         self.feature_extractor.num_mel_bins = 128     # Customize if needed; keep original as default
@@ -399,8 +411,12 @@ def get_pred_attn(method, dims, dl, device, bs, threshold_value, num_inputs):
             for batch_index, (index, batch_features) in enumerate(dl):
                 last_logged = print_log_progress(batch_index, dl.__len__(), last_logged, dim)
                 batch_features = batch_features.float().to(device)
-                batch_features.requires_grad = True 
-                pred_sal = model(batch_features, output_attentions=False)
+                # Scores are >= 1, so a threshold below 1 cannot request
+                # saliency. Avoid retaining a gradient graph in score-only runs.
+                need_grad = threshold_value >= 1
+                batch_features.requires_grad = need_grad
+                with torch.set_grad_enabled(need_grad):
+                    pred_sal = model(batch_features, output_attentions=False)
                 pred = pred_sal.cpu().detach()
 
                 # batch_size always 1 for GradCAM
